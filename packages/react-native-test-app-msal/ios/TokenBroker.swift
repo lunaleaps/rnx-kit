@@ -1,7 +1,7 @@
 import Foundation
 import MSAL
 
-public typealias TokenAcquiredHandler = (_ accountUPN: String, _ accessToken: String?, _ error: String?) -> Void
+public typealias TokenAcquiredHandler = (_ result: AuthResult?, _ error: AuthError?) -> Void
 
 @objc(TokenBroker)
 public final class TokenBroker: NSObject {
@@ -49,7 +49,12 @@ public final class TokenBroker: NSObject {
         onTokenAcquired: @escaping TokenAcquiredHandler
     ) {
         guard let currentAccount = currentAccount else {
-            onTokenAcquired("", nil, "No current account")
+            let error = AuthError(
+                type: .preconditionViolated,
+                correlationID: "00000000-0000-0000-0000-000000000000",
+                message: "No current account"
+            )
+            onTokenAcquired(nil, error)
             return
         }
 
@@ -182,9 +187,26 @@ public final class TokenBroker: NSObject {
             application.acquireToken(with: parameters) { result, error in
                 self.condition.signal()
 
-                let username = result?.account.username ?? ""
-                let accessToken = result?.accessToken
-                onTokenAcquired(username, accessToken, error?.localizedDescription)
+                guard let result = result else {
+                    let nsError = error as NSError?
+                    let errorCode = nsError?.code ?? 0
+                    let message: String? = nsError?.userInfo["MSALErrorDescriptionKey"] as? String
+                    let authError = AuthError(
+                        type: AuthErrorType(MSALError(rawValue: errorCode) ?? .internal),
+                        correlationID: "00000000-0000-0000-0000-000000000000",
+                        message: message ?? nsError?.localizedDescription
+                    )
+                    onTokenAcquired(nil, authError)
+                    return
+                }
+
+                let authResult = AuthResult(
+                    accessToken: result.accessToken,
+                    username: result.account.username ?? "",
+                    expirationTime: Int(result.expiresOn?.timeIntervalSince1970 ?? 0),
+                    redirectURI: Constants.RedirectURI
+                )
+                onTokenAcquired(authResult, nil)
             }
         }
     }
@@ -246,13 +268,25 @@ public final class TokenBroker: NSObject {
                             return
                         }
 
-                        onTokenAcquired("", nil, error.localizedDescription)
+                        let authError = AuthError(
+                            type: AuthErrorType(MSALError(rawValue: error.code) ?? .internal),
+                            correlationID: "00000000-0000-0000-0000-000000000000",
+                            message: error.localizedDescription
+                        )
+                        onTokenAcquired(nil, authError)
                     }
                     return
                 }
 
                 self.condition.signal()
-                onTokenAcquired(userPrincipalName, result?.accessToken, nil)
+
+                let authResult = AuthResult(
+                    accessToken: result?.accessToken ?? "",
+                    username: result?.account.username ?? "",
+                    expirationTime: Int(result?.expiresOn?.timeIntervalSince1970 ?? 0),
+                    redirectURI: Constants.RedirectURI
+                )
+                onTokenAcquired(authResult, nil)
             }
         }
     }

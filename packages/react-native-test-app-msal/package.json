@@ -16,11 +16,18 @@
   "scripts": {
     "build": "echo Build done.",
     "format": "echo Format done.",
+    "format:c": "clang-format -i $(git ls-files '*.h' '*.m')",
     "format:swift": "swiftformat --swiftversion 5.5 ios",
     "lint": "echo Lint done.",
     "lint:swift": "swiftlint"
   },
   "peerDependencies": {
+    "@rnx-kit/auth": "*",
     "react-native-test-app": ">=0.9.8"
+  },
+  "peerDependenciesMeta": {
+    "@rnx-kit/auth": {
+      "optional": true
+    }
   }
 }
